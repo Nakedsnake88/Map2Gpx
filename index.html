@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Map 2 Gpx</title>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            font-family: 'Press Start 2P', cursive;
+            background-color: black;
+            color: #fff;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
+            align-items: center;
+        }
+
+        #logo {
+            font-size: 36px;
+            color: #00FF00;
+            text-align: center;
+            text-shadow: 0 0 10px #00FF00, 0 0 20px #00FF00, 0 0 30px #00FF00;
+            margin-top: 20px;
+        }
+
+        #controls {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-top: 20px;
+            width: 80%;
+            max-width: 600px;
+        }
+
+        #searchBox {
+            width: 100%;
+            padding: 10px;
+            font-size: 16px;
+            border: 2px solid #00FF00;
+            border-radius: 5px;
+            margin-bottom: 10px;
+            background-color: #222;
+            color: white;
+        }
+
+        #controls button {
+            background-color: #32CD32;
+            border: none;
+            padding: 12px 24px;
+            color: white;
+            font-size: 16px;
+            margin-bottom: 10px;
+            width: 100%;
+            border-radius: 5px;
+            cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.5);
+            transition: background-color 0.3s ease;
+        }
+
+        #controls button:hover {
+            background-color: #228B22;
+        }
+
+        #map {
+            height: 50vh;
+            width: 80%;
+            max-width: 600px;
+            border: 2px solid #00FF00;
+            border-radius: 5px;
+            margin-top: 20px;
+        }
+
+        #footer {
+            margin-top: 20px;
+            padding: 10px;
+            background-color: black;
+            width: 100%;
+            text-align: center;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            color: #fff;
+        }
+    </style>
+</head>
+<body>
+    <div id="logo">MAP 2 GPX</div>
+    <div id="controls">
+        <input type="text" id="searchBox" placeholder="Cerca una località" />
+        <button onclick="searchLocation()">Cerca</button>
+        <button onclick="exportToGPX()">Esporta GPX</button>
+    </div>
+    <div id="map"></div>
+    <div id="footer">Designed by Alessandro Renna</div>
+
+    <script>
+        var map = L.map('map').setView([45.4642, 9.1900], 13); // Milano di default
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        }).addTo(map);
+
+        var geojsonLayer;
+        var features = [];
+
+        function searchLocation() {
+            var location = document.getElementById('searchBox').value;
+            if (location) {
+                var query = `https://nominatim.openstreetmap.org/search?q=${location}&format=json`;
+                $.get(query, function(data) {
+                    if (data && data.length > 0) {
+                        var lat = data[0].lat;
+                        var lon = data[0].lon;
+                        map.setView([lat, lon], 13);
+                        fetchAdministrativeArea(lat, lon);
+                    } else {
+                        alert('Località non trovata');
+                    }
+                });
+            }
+        }
+
+        function fetchAdministrativeArea(lat, lon) {
+            var overpassUrl = 'https://overpass-api.de/api/interpreter';
+            var query = `
+                [out:json];
+                is_in(${lat},${lon})->.a;
+                relation(pivot.a)["boundary"="administrative"]["admin_level"="8"];
+                out body;
+            `;
+
+            $.ajax({
+                url: overpassUrl,
+                data: { data: query },
+                success: function(data) {
+                    if (data && data.elements.length > 0) {
+                        var relationId = data.elements[0].id;
+                        fetchOverpassData(relationId);
+                    } else {
+                        alert('Confini comunali non trovati');
+                    }
+                },
+                error: function(err) {
+                    console.error("Errore nella richiesta dei confini:", err);
+                }
+            });
+        }
+
+        function fetchOverpassData(relationId) {
+            var overpassUrl = 'https://overpass-api.de/api/interpreter';
+            var query = `
+                [out:json];
+                area(${relationId + 3600000000})->.searchArea;
+                (
+                    way["highway"](area.searchArea);
+                );
+                out body;
+                >;
+                out skel qt;
+            `;
+
+            $.ajax({
+                url: overpassUrl,
+                data: { data: query },
+                success: function(data) {
+                    processOverpassData(data);
+                },
+                error: function(err) {
+                    console.error("Errore nella richiesta Overpass:", err);
+                }
+            });
+        }
+
+        function processOverpassData(data) {
+            map.eachLayer(function(layer) {
+                if (layer instanceof L.Polygon || layer instanceof L.Polyline) {
+                    map.removeLayer(layer);
+                }
+            });
+
+            features = []; // Reset delle features per l'esportazione
+
+            // Disegna le strade
+            data.elements.forEach(function(element) {
+                if (element.type === 'way' && element.tags && element.tags.highway && element.nodes) {
+                    var latlngs = element.nodes.map(function(nodeId) {
+                        var node = data.elements.find(e => e.type === 'node' && e.id === nodeId);
+                        return node ? [node.lat, node.lon] : null;
+                    }).filter(Boolean);
+
+                    if (latlngs.length > 0) {
+                        L.polyline(latlngs, { color: 'blue', weight: 3 }).addTo(map);
+                        features.push({
+                            type: 'Feature',
+                            geometry: {
+                                type: 'LineString',
+                                coordinates: latlngs.map(ll => [ll[1], ll[0]]),
+                            },
+                            properties: { highway: element.tags.highway }
+                        });
+                    }
+                }
+            });
+        }
+
+        function geojsonToGPX(geojson) {
+            var gpx = '<?xml version="1.0" encoding="UTF-8"?>';
+            gpx += '<gpx version="1.1" creator="Leaflet" xmlns="http://www.topografix.com/GPX/1/1">';
+            geojson.features.forEach(function(feature) {
+                if (feature.geometry.type === 'LineString') {
+                    gpx += '<trk><trkseg>';
+                    feature.geometry.coordinates.forEach(function(coord) {
+                        gpx += `<trkpt lat="${coord[1]}" lon="${coord[0]}"></trkpt>`;
+                    });
+                    gpx += '</trkseg></trk>';
+                }
+            });
+            gpx += '</gpx>';
+            return gpx;
+        }
+
+        function exportToGPX() {
+            if (features.length > 0) {
+                var geojson = {
+                    type: 'FeatureCollection',
+                    features: features
+                };
+
+                var localita = document.getElementById('searchBox').value; // Prendi il nome della località
+                var gpx = geojsonToGPX(geojson); // Usa la funzione personalizzata per convertire GeoJSON in GPX
+
+                // Crea un Blob e un link per scaricare il file GPX
+                var blob = new Blob([gpx], { type: 'application/gpx+xml' });
+                var link = document.createElement('a');
+                link.href = URL.createObjectURL(blob);
+                link.download = `${localita}_strade.gpx`; // Usa il nome della località per il file GPX
+                link.click();
+            } else {
+                alert("Nessun dato da esportare");
+            }
+        }
+    </script>
+</body>
+</html>
