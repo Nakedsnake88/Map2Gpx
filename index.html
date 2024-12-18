@@ -112,10 +112,11 @@
                 var query = `https://nominatim.openstreetmap.org/search?q=${location}&format=json`;
                 $.get(query, function(data) {
                     if (data && data.length > 0) {
+                        var nomeComune = data[0].display_name.split(',')[0]; // Estrai il nome del comune
                         var lat = data[0].lat;
                         var lon = data[0].lon;
                         map.setView([lat, lon], 13);
-                        fetchAdministrativeArea(lat, lon);
+                        fetchOverpassData(nomeComune);
                     } else {
                         alert('Località non trovata');
                     }
@@ -123,43 +124,14 @@
             }
         }
 
-        function fetchAdministrativeArea(lat, lon) {
+        function fetchOverpassData(nomeComune) {
             var overpassUrl = 'https://overpass-api.de/api/interpreter';
             var query = `
-                [out:json];
-                is_in(${lat},${lon})->.a;
-                relation(pivot.a)["boundary"="administrative"]["admin_level"="8"];
-                out body;
-            `;
-
-            $.ajax({
-                url: overpassUrl,
-                data: { data: query },
-                success: function(data) {
-                    if (data && data.elements.length > 0) {
-                        var relationId = data.elements[0].id;
-                        fetchOverpassData(relationId);
-                    } else {
-                        alert('Confini comunali non trovati');
-                    }
-                },
-                error: function(err) {
-                    console.error("Errore nella richiesta dei confini:", err);
-                }
-            });
-        }
-
-        function fetchOverpassData(relationId) {
-            var overpassUrl = 'https://overpass-api.de/api/interpreter';
-            var query = `
-                [out:json];
-                area(${relationId + 3600000000})->.searchArea;
-                (
-                    way["highway"](area.searchArea);
-                );
-                out body;
-                >;
-                out skel qt;
+                [out:json][timeout:50];
+                area[name="${nomeComune}"]["boundary"="administrative"]["admin_level"="8"]->.searchArea;
+                way(area.searchArea)
+                  ["highway"~"^(trunk|primary|secondary|tertiary|unclassified|residential|living_street)$"];
+                out geom body;
             `;
 
             $.ajax({
@@ -185,23 +157,20 @@
 
             // Disegna le strade
             data.elements.forEach(function(element) {
-                if (element.type === 'way' && element.tags && element.tags.highway && element.nodes) {
-                    var latlngs = element.nodes.map(function(nodeId) {
-                        var node = data.elements.find(e => e.type === 'node' && e.id === nodeId);
-                        return node ? [node.lat, node.lon] : null;
-                    }).filter(Boolean);
+                if (element.type === 'way' && element.tags && element.tags.highway && element.geometry) {
+                    var latlngs = element.geometry.map(function(coord) {
+                        return [coord.lat, coord.lon];
+                    });
 
-                    if (latlngs.length > 0) {
-                        L.polyline(latlngs, { color: 'blue', weight: 3 }).addTo(map);
-                        features.push({
-                            type: 'Feature',
-                            geometry: {
-                                type: 'LineString',
-                                coordinates: latlngs.map(ll => [ll[1], ll[0]]),
-                            },
-                            properties: { highway: element.tags.highway }
-                        });
-                    }
+                    L.polyline(latlngs, { color: 'blue', weight: 3 }).addTo(map);
+                    features.push({
+                        type: 'Feature',
+                        geometry: {
+                            type: 'LineString',
+                            coordinates: latlngs.map(ll => [ll[1], ll[0]]),
+                        },
+                        properties: { highway: element.tags.highway }
+                    });
                 }
             });
         }
