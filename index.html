@@ -8,6 +8,8 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <!-- Favicon -->
+    <link rel="icon" href="favicon.jpg" type="image/jpeg">
     <style>
         body {
             margin: 0;
@@ -94,16 +96,7 @@
             margin-top: 10px;
             white-space: nowrap;
         }
-
-        /* Icona favicon ingrandita */
-        link[rel="icon"] {
-            width: 256px;
-            height: 256px;
-        }
-
     </style>
-    <!-- Icona per i preferiti e la home -->
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text x='50%' y='50%' font-family='Press Start 2P' font-size='40' fill='%23FF0000' text-anchor='middle' dy='.3em'>M2G</text></svg>">
 </head>
 <body>
     <div id="logo">MAP 2 GPX</div>
@@ -159,7 +152,7 @@
             var currentIndex = 0;
 
             var loadingInterval = setInterval(function() {
-                loadingText.innerText = loadingSymbols[currentIndex];
+                loadingText.innerText = "Caricamento... " + loadingSymbols[currentIndex];
                 currentIndex = (currentIndex + 1) % loadingSymbols.length;
             }, 100); // Cambia simbolo ogni 100ms
 
@@ -241,7 +234,7 @@
                 link.download = `${localita}_strade.gpx`; // Usa il nome della località per il file GPX
                 link.click();
             } else {
-                alert("Nessun dato da esportare");
+                alert("Nessun dato disponibile per l'esportazione.");
             }
         }
     </script>
