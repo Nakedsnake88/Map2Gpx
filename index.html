@@ -85,7 +85,25 @@
             font-size: 14px;
             color: #fff;
         }
+
+        /* Barra di progresso semplificata in stile pixel art */
+        #loadingText {
+            font-family: 'Courier New', monospace;
+            color: #32CD32;
+            font-size: 20px;
+            margin-top: 10px;
+            white-space: nowrap;
+        }
+
+        /* Icona favicon ingrandita */
+        link[rel="icon"] {
+            width: 256px;
+            height: 256px;
+        }
+
     </style>
+    <!-- Icona per i preferiti e la home -->
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text x='50%' y='50%' font-family='Press Start 2P' font-size='40' fill='%23FF0000' text-anchor='middle' dy='.3em'>M2G</text></svg>">
 </head>
 <body>
     <div id="logo">MAP 2 GPX</div>
@@ -93,6 +111,7 @@
         <input type="text" id="searchBox" placeholder="Cerca una località" />
         <button onclick="searchLocation()">Cerca</button>
         <button onclick="exportToGPX()">Esporta GPX</button>
+        <div id="loadingText"></div> <!-- Barra di progresso in stile pixel art -->
     </div>
     <div id="map"></div>
     <div id="footer">Designed by Alessandro Renna</div>
@@ -127,21 +146,35 @@
         function fetchOverpassData(nomeComune) {
             var overpassUrl = 'https://overpass-api.de/api/interpreter';
             var query = `
-                [out:json][timeout:50];
+                [out:json][timeout:120];
                 area[name="${nomeComune}"]["boundary"="administrative"]["admin_level"="8"]->.searchArea;
                 way(area.searchArea)
                   ["highway"~"^(trunk|primary|secondary|tertiary|unclassified|residential|living_street)$"];
                 out geom body;
             `;
 
+            // Inizia la progress bar
+            var loadingText = document.getElementById('loadingText');
+            var loadingSymbols = ['\\', '|', '/', '-'];
+            var currentIndex = 0;
+
+            var loadingInterval = setInterval(function() {
+                loadingText.innerText = loadingSymbols[currentIndex];
+                currentIndex = (currentIndex + 1) % loadingSymbols.length;
+            }, 100); // Cambia simbolo ogni 100ms
+
             $.ajax({
                 url: overpassUrl,
                 data: { data: query },
                 success: function(data) {
                     processOverpassData(data);
+                    clearInterval(loadingInterval); // Interrompi l'animazione
+                    loadingText.innerText = "Caricamento completato!";
                 },
                 error: function(err) {
                     console.error("Errore nella richiesta Overpass:", err);
+                    clearInterval(loadingInterval); // Interrompi l'animazione
+                    loadingText.innerText = "Errore nel caricamento";
                 }
             });
         }
