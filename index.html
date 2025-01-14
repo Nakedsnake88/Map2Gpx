@@ -3,12 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Map 2 Gpx</title>
+    <title>Map 2 GPX</title>
     <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <!-- Favicon -->
     <link rel="icon" href="favicon.jpg" type="image/jpeg">
     <style>
         body {
@@ -30,7 +29,7 @@
             margin-top: 20px;
         }
 
-        #controls {
+        #controls, #kmlToGpxSection {
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -39,7 +38,7 @@
             max-width: 600px;
         }
 
-        #searchBox {
+        #searchBox, #fileInput {
             width: 100%;
             padding: 10px;
             font-size: 16px;
@@ -50,7 +49,7 @@
             color: white;
         }
 
-        #controls button {
+        button {
             background-color: #32CD32;
             border: none;
             padding: 12px 24px;
@@ -64,7 +63,7 @@
             transition: background-color 0.3s ease;
         }
 
-        #controls button:hover {
+        button:hover {
             background-color: #228B22;
         }
 
@@ -88,26 +87,37 @@
             color: #fff;
         }
 
-        /* Barra di progresso semplificata in stile pixel art */
         #loadingText {
             font-family: 'Courier New', monospace;
             color: #32CD32;
             font-size: 20px;
             margin-top: 10px;
-            white-space: nowrap;
         }
     </style>
 </head>
 <body>
     <div id="logo">MAP 2 GPX</div>
+
+    <!-- Sezione principale -->
     <div id="controls">
         <input type="text" id="searchBox" placeholder="Cerca una località" />
         <button onclick="searchLocation()">Cerca</button>
         <button onclick="exportToGPX()">Esporta GPX</button>
-        <button onclick="window.open('https://www.gpsvisualizer.com/', '_blank')">Converti KML in GPX</button>
-        <div id="loadingText"></div> <!-- Barra di progresso in stile pixel art -->
+        <button onclick="showKmlToGpxSection()">Converti KML in GPX</button>
+        <div id="loadingText"></div>
     </div>
+
+    <!-- Mappa -->
     <div id="map"></div>
+
+    <!-- Sezione KML-GPX -->
+    <div id="kmlToGpxSection" style="display: none;">
+        <h2>Converti KML in GPX</h2>
+        <input type="file" id="fileInput" accept=".kml" />
+        <button onclick="convertKmlToGpx()">Converti</button>
+        <button onclick="showMainSection()">Torna indietro</button>
+    </div>
+
     <div id="footer">Designed by Alessandro Renna</div>
 
     <script>
@@ -119,13 +129,14 @@
         var geojsonLayer;
         var features = [];
 
+        // Funzione per cercare una località
         function searchLocation() {
             var location = document.getElementById('searchBox').value;
             if (location) {
                 var query = `https://nominatim.openstreetmap.org/search?q=${location}&format=json`;
                 $.get(query, function(data) {
                     if (data && data.length > 0) {
-                        var nomeComune = data[0].display_name.split(',')[0]; // Estrai il nome del comune
+                        var nomeComune = data[0].display_name.split(',')[0];
                         var lat = data[0].lat;
                         var lon = data[0].lon;
                         map.setView([lat, lon], 13);
@@ -137,17 +148,16 @@
             }
         }
 
+        // Funzione per recuperare dati da Overpass
         function fetchOverpassData(nomeComune) {
             var overpassUrl = 'https://overpass-api.de/api/interpreter';
             var query = `
                 [out:json][timeout:120];
                 area[name="${nomeComune}"]["boundary"="administrative"]["admin_level"="8"]->.searchArea;
-                way(area.searchArea)
-                  ["highway"~"^(trunk|primary|secondary|tertiary|unclassified|residential|living_street)$"];
+                way(area.searchArea)["highway"];
                 out geom body;
             `;
 
-            // Inizia la progress bar
             var loadingText = document.getElementById('loadingText');
             var loadingSymbols = ['\\', '|', '/', '-'];
             var currentIndex = 0;
@@ -155,69 +165,46 @@
             var loadingInterval = setInterval(function() {
                 loadingText.innerText = "Caricamento... " + loadingSymbols[currentIndex];
                 currentIndex = (currentIndex + 1) % loadingSymbols.length;
-            }, 100); // Cambia simbolo ogni 100ms
+            }, 100);
 
             $.ajax({
                 url: overpassUrl,
                 data: { data: query },
                 success: function(data) {
                     processOverpassData(data);
-                    clearInterval(loadingInterval); // Interrompi l'animazione
+                    clearInterval(loadingInterval);
                     loadingText.innerText = "Caricamento completato!";
                 },
                 error: function(err) {
-                    console.error("Errore nella richiesta Overpass:", err);
-                    clearInterval(loadingInterval); // Interrompi l'animazione
+                    clearInterval(loadingInterval);
                     loadingText.innerText = "Errore nel caricamento";
                 }
             });
         }
 
+        // Funzione per elaborare i dati Overpass
         function processOverpassData(data) {
             map.eachLayer(function(layer) {
-                if (layer instanceof L.Polygon || layer instanceof L.Polyline) {
+                if (layer instanceof L.Polyline) {
                     map.removeLayer(layer);
                 }
             });
 
-            features = []; // Reset delle features per l'esportazione
-
-            // Disegna le strade
+            features = [];
             data.elements.forEach(function(element) {
-                if (element.type === 'way' && element.tags && element.tags.highway && element.geometry) {
-                    var latlngs = element.geometry.map(function(coord) {
-                        return [coord.lat, coord.lon];
-                    });
-
+                if (element.type === 'way' && element.geometry) {
+                    var latlngs = element.geometry.map(coord => [coord.lat, coord.lon]);
                     L.polyline(latlngs, { color: 'blue', weight: 3 }).addTo(map);
                     features.push({
                         type: 'Feature',
-                        geometry: {
-                            type: 'LineString',
-                            coordinates: latlngs.map(ll => [ll[1], ll[0]]),
-                        },
+                        geometry: { type: 'LineString', coordinates: latlngs.map(ll => [ll[1], ll[0]]) },
                         properties: { highway: element.tags.highway }
                     });
                 }
             });
         }
 
-        function geojsonToGPX(geojson) {
-            var gpx = '<?xml version="1.0" encoding="UTF-8"?>';
-            gpx += '<gpx version="1.1" creator="Leaflet" xmlns="http://www.topografix.com/GPX/1/1">';
-            geojson.features.forEach(function(feature) {
-                if (feature.geometry.type === 'LineString') {
-                    gpx += '<trk><trkseg>';
-                    feature.geometry.coordinates.forEach(function(coord) {
-                        gpx += `<trkpt lat="${coord[1]}" lon="${coord[0]}"></trkpt>`;
-                    });
-                    gpx += '</trkseg></trk>';
-                }
-            });
-            gpx += '</gpx>';
-            return gpx;
-        }
-
+        // Funzione per esportare in GPX
         function exportToGPX() {
             if (features.length > 0) {
                 var geojson = {
@@ -238,6 +225,96 @@
                 alert("Nessun dato disponibile per l'esportazione.");
             }
         }
+
+        // Funzione per convertire GeoJSON in GPX
+        function geojsonToGPX(geojson) {
+            var gpx = '<?xml version="1.0" encoding="UTF-8"?>';
+            gpx += '<gpx version="1.1" creator="Leaflet">';
+            geojson.features.forEach(function(feature) {
+                if (feature.geometry.type === 'LineString') {
+                    gpx += '<trk><trkseg>';
+                    feature.geometry.coordinates.forEach(function(coord) {
+                        gpx += `<trkpt lat="${coord[1]}" lon="${coord[0]}"></trkpt>`;
+                    });
+                    gpx += '</trkseg></trk>';
+                }
+            });
+            gpx += '</gpx>';
+            return gpx;
+        }
+
+        // Funzione per mostrare la sezione KML-GPX
+        function showKmlToGpxSection() {
+            document.getElementById('controls').style.display = 'none';
+            document.getElementById('map').style.display = 'none';
+            document.getElementById('kmlToGpxSection').style.display = 'flex';
+        }
+
+        // Funzione per tornare alla sezione principale
+        function showMainSection() {
+            document.getElementById('controls').style.display = 'flex';
+            document.getElementById('map').style.display = 'block';
+            document.getElementById('kmlToGpxSection').style.display = 'none';
+        }
+
+        // Funzione per convertire KML in GPX
+        function convertKmlToGpx() {
+    const fileInput = document.getElementById('fileInput');
+    const file = fileInput.files[0];
+
+    if (!file) {
+        alert("Seleziona un file KML.");
+        return;
+    }
+
+    const fileNameWithoutExtension = file.name.replace(/\.[^/.]+$/, ""); // Rimuove l'estensione dal nome del file
+
+    const reader = new FileReader();
+    reader.onload = function (e) {
+        const kmlContent = e.target.result;
+
+        // Parsing del KML come XML
+        const parser = new DOMParser();
+        const kmlDoc = parser.parseFromString(kmlContent, 'application/xml');
+
+        // Controllo errori nel parsing
+        if (kmlDoc.querySelector('parsererror')) {
+            alert("Errore nel parsing del file KML.");
+            return;
+        }
+
+        // Costruzione del GPX
+        let gpx = '<?xml version="1.0" encoding="UTF-8"?>\n';
+        gpx += '<gpx version="1.1" creator="Map 2 GPX">\n';
+
+        const placemarks = kmlDoc.querySelectorAll('Placemark');
+        placemarks.forEach(placemark => {
+            const coordinatesTag = placemark.querySelector('coordinates');
+            if (coordinatesTag) {
+                const coordinates = coordinatesTag.textContent.trim().split(/\s+/);
+                gpx += '<trk>\n<trkseg>\n';
+                coordinates.forEach(coord => {
+                    const [lon, lat] = coord.split(',');
+                    if (lat && lon) {
+                        gpx += `<trkpt lat="${lat}" lon="${lon}"></trkpt>\n`;
+                    }
+                });
+                gpx += '</trkseg>\n</trk>\n';
+            }
+        });
+
+        gpx += '</gpx>';
+
+        // Creazione del file GPX e download
+        const blob = new Blob([gpx], { type: 'application/gpx+xml' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `${fileNameWithoutExtension}.gpx`; // Nome file basato sul nome del KML
+        link.click();
+    };
+
+    reader.readAsText(file);
+}
     </script>
 </body>
 </html>
