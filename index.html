@@ -267,7 +267,7 @@
         return;
     }
 
-    const fileNameWithoutExtension = file.name.replace(/\.[^/.]+$/, ""); // Rimuove l'estensione dal nome del file
+    const fileNameWithoutExtension = file.name.replace(/\.[^/.]+$/, ""); // Nome senza estensione
 
     const reader = new FileReader();
     reader.onload = function (e) {
@@ -278,38 +278,65 @@
         const kmlDoc = parser.parseFromString(kmlContent, 'application/xml');
 
         // Controllo errori nel parsing
-        if (kmlDoc.querySelector('parsererror')) {
+        const parseError = kmlDoc.querySelector('parsererror');
+        if (parseError) {
             alert("Errore nel parsing del file KML.");
             return;
         }
 
-        // Costruzione del GPX
         let gpx = '<?xml version="1.0" encoding="UTF-8"?>\n';
-        gpx += '<gpx version="1.1" creator="Map 2 GPX">\n';
+        gpx += '<gpx version="1.1" creator="Route Master">\n';
 
+        // Ciclo attraverso tutti i Placemark
         const placemarks = kmlDoc.querySelectorAll('Placemark');
         placemarks.forEach(placemark => {
-            const coordinatesTag = placemark.querySelector('coordinates');
-            if (coordinatesTag) {
-                const coordinates = coordinatesTag.textContent.trim().split(/\s+/);
-                gpx += '<trk>\n<trkseg>\n';
-                coordinates.forEach(coord => {
-                    const [lon, lat] = coord.split(',');
-                    if (lat && lon) {
-                        gpx += `<trkpt lat="${lat}" lon="${lon}"></trkpt>\n`;
-                    }
-                });
-                gpx += '</trkseg>\n</trk>\n';
-            }
+            // Cerca nome strada (se disponibile)
+            let streetName = placemark.querySelector('name')?.textContent.trim() || "Strada Sconosciuta";
+
+            // Cerca coordinate nei <LineString>
+            const lineStrings = placemark.querySelectorAll('LineString > coordinates');
+            lineStrings.forEach(coordTag => {
+                const coords = coordTag.textContent.trim().split(/\s+/);
+                if (coords.length > 1) { // Se ci sono abbastanza coordinate, crea un segmento
+                    gpx += `<trk><name>${streetName}</name>\n<trkseg>\n`;
+
+                    coords.forEach(coord => {
+                        const [lon, lat] = coord.split(',');
+                        if (lat && lon) {
+                            gpx += `<trkpt lat="${lat}" lon="${lon}"></trkpt>\n`;
+                        }
+                    });
+
+                    gpx += '</trkseg>\n</trk>\n'; // Chiude il segmento prima di iniziarne uno nuovo
+                }
+            });
+
+            // Cerca coordinate nei <Polygon> (outerBoundaryIs)
+            const polygons = placemark.querySelectorAll('Polygon > outerBoundaryIs > LinearRing > coordinates');
+            polygons.forEach(coordTag => {
+                const coords = coordTag.textContent.trim().split(/\s+/);
+                if (coords.length > 1) {
+                    gpx += `<trk><name>${streetName} (Poligono)</name>\n<trkseg>\n`;
+
+                    coords.forEach(coord => {
+                        const [lon, lat] = coord.split(',');
+                        if (lat && lon) {
+                            gpx += `<trkpt lat="${lat}" lon="${lon}"></trkpt>\n`;
+                        }
+                    });
+
+                    gpx += '</trkseg>\n</trk>\n'; // Chiude il segmento
+                }
+            });
         });
 
         gpx += '</gpx>';
 
-        // Creazione del file GPX e download
+        // Creazione del file GPX
         const blob = new Blob([gpx], { type: 'application/gpx+xml' });
         const link = document.createElement('a');
         link.href = URL.createObjectURL(blob);
-        link.download = `${fileNameWithoutExtension}.gpx`; // Nome file basato sul nome del KML
+        link.download = `${fileNameWithoutExtension}.gpx`; // Nome basato sul KML
         link.click();
     };
 
