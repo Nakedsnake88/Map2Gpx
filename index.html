@@ -93,6 +93,20 @@
             font-size: 20px;
             margin-top: 10px;
         }
+		@media (max-width: 600px) {
+    #controls, #KmlToGpxSection, #gpxToLogSection {
+        width: 95%;  /* Aumenta la larghezza su schermi più piccoli */
+        max-width: none;
+    }
+
+    #map {
+        width: 95%;
+        height: 40vh;
+    }
+}
+		* {
+    box-sizing: border-box;
+}
     </style>
 </head>
 <body>
