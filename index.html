@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Map 2 GPX</title>
+    <title>H.E.R.M.E.S. - Highway Expeditions, Routes, and Magical Exploration Services</title>
     <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
@@ -29,7 +29,7 @@
             margin-top: 20px;
         }
 
-        #controls, #kmlToGpxSection {
+        #controls, #KmlToGpxSection, #gpxToLogSection {
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -38,7 +38,7 @@
             max-width: 600px;
         }
 
-        #searchBox, #fileInput {
+        #searchBox, #fileInput, #gpxFileInput {
             width: 100%;
             padding: 10px;
             font-size: 16px;
@@ -96,14 +96,16 @@
     </style>
 </head>
 <body>
-    <div id="logo">MAP 2 GPX</div>
-
-    <!-- Sezione principale -->
+    <div id="logo">H.E.R.M.E.S.</div>
+	<!--Highway Expeditions, Routes, and Magical Exploration Services-->
+	 <!-- Sezione principale -->
     <div id="controls">
         <input type="text" id="searchBox" placeholder="Cerca una località" />
         <button onclick="searchLocation()">Cerca</button>
         <button onclick="exportToGPX()">Esporta GPX</button>
-        <button onclick="showKmlToGpxSection()">Converti KML in GPX</button>
+        <button onclick="KmlToGpxSection()">Converti KML in GPX</button>
+		<button id="convertGpxToLogBtn">Da OsmAnd a Data Miner</button>
+
         <div id="loadingText"></div>
     </div>
 
@@ -117,6 +119,13 @@
         <button onclick="convertKmlToGpx()">Converti</button>
         <button onclick="showMainSection()">Torna indietro</button>
     </div>
+	<!-- Sezione GPX → LOG -->
+<div id="gpxToLogSection" style="display: none;">
+    <h2>Converti GPX in LOG</h2>
+    <input type="file" id="gpxFileInput" accept=".gpx">
+    <button onclick="convertGpxToLog()">Converti in LOG</button>
+    <button onclick="showMainSection()">Torna indietro</button>
+</div>
 
     <div id="footer">Designed by Alessandro Renna</div>
 
@@ -242,20 +251,20 @@
             gpx += '</gpx>';
             return gpx;
         }
-
-        // Funzione per mostrare la sezione KML-GPX
-        function showKmlToGpxSection() {
-            document.getElementById('controls').style.display = 'none';
-            document.getElementById('map').style.display = 'none';
-            document.getElementById('kmlToGpxSection').style.display = 'flex';
+      // Funzione per mostrare la sezione KML-GPX
+		
+        function KmlToGpxSection() {
+   document.getElementById('controls').style.display = 'none';
+    document.getElementById('map').style.display = 'none';
+  document.getElementById('kmlToGpxSection').style.display = 'block';
         }
-
-        // Funzione per tornare alla sezione principale
+       // Funzione per tornare alla sezione principale
         function showMainSection() {
-            document.getElementById('controls').style.display = 'flex';
-            document.getElementById('map').style.display = 'block';
-            document.getElementById('kmlToGpxSection').style.display = 'none';
-        }
+    document.getElementById('controls').style.display = 'flex'; // Mostra i controlli
+    document.getElementById('map').style.display = 'block'; // Mostra la mappa
+    document.getElementById('kmlToGpxSection').style.display = 'none'; // Nascondi la sezione KML → GPX
+    document.getElementById('gpxToLogSection').style.display = 'none'; // Nascondi la sezione GPX → LOG
+}
 
         // Funzione per convertire KML in GPX
         function convertKmlToGpx() {
@@ -342,6 +351,46 @@
 
     reader.readAsText(file);
 }
+  // Mostra la sezione GPX → LOG quando si clicca il pulsante
+document.getElementById('convertGpxToLogBtn').addEventListener('click', function () {
+    document.getElementById('controls').style.display = 'none'; // Nascondi la sezione dei controlli
+    document.getElementById('map').style.display = 'none'; // Nascondi la mappa
+    document.getElementById('gpxToLogSection').style.display = 'block'; // Mostra la sezione GPX → LOG
+});
+		function convertGpxToLog() {
+        let fileInput = document.getElementById("gpxFileInput");
+        let file = fileInput.files[0];
+
+        if (!file) {
+            alert("Seleziona un file GPX.");
+            return;
+        }
+			const fileNameWithoutExtension = file.name.replace('.gpx', '');
+
+        let reader = new FileReader();
+        reader.onload = function (e) {
+            let gpxText = e.target.result;
+            let parser = new DOMParser();
+            let xmlDoc = parser.parseFromString(gpxText, "text/xml");
+            let trkpts = xmlDoc.getElementsByTagName("trkpt");
+
+            let logData = "";
+            for (let i = 0; i < trkpts.length; i++) {
+                let lat = trkpts[i].getAttribute("lat");
+                let lon = trkpts[i].getAttribute("lon");
+                logData += `${lat},${lon}\n`;
+            }
+
+            // Creazione del file LOG scaricabile
+            let blob = new Blob([logData], { type: "text/plain" });
+            let link = document.createElement("a");
+            link.href = URL.createObjectURL(blob);
+            link.download = `${fileNameWithoutExtension}.log`; // Nome basato sul GPX
+            link.click();
+        };
+
+        reader.readAsText(file);
+    }
     </script>
 </body>
 </html>
